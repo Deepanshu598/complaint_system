@@ -27,13 +27,19 @@ router.post('/signup', async (req,res)=>{
   const role = await Role.findOne({ where: { role_name: 'user' } });
   const role_id = role ? role.role_id : 4;
   const user = await User.create({ email, username: email, password_hash: hash, first_name, last_name, role_id });
+  const userWithRole = await User.findByPk(user.user_id, {
+    include: [{ model: Role, as: 'role' }]
+  });
   const token = jwt.sign({ userId: user.user_id, roleId: user.role_id }, process.env.JWT_SECRET || 'dev', { expiresIn: '7d' });
-  res.json({ token, user });
+  res.json({ token, user: userWithRole });
 });
 
 router.post('/login', async (req,res)=>{
   const { email, password } = req.body;
-  const user = await User.findOne({ where: { email } });
+  const user = await User.findOne({ 
+    where: { email },
+    include: [{ model: require('../models').Role, as: 'role' }]
+  });
   if(!user) return res.status(400).json({ error:'invalid' });
   const ok = await bcrypt.compare(password, user.password_hash || '');
   if(!ok) return res.status(400).json({ error:'invalid' });

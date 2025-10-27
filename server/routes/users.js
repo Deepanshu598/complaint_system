@@ -20,8 +20,19 @@ router.post('/', authMiddleware, permit(['superadmin']), async (req,res)=>{
   const role = await Role.findOne({ where: { role_name } });
   if(!role) return res.status(400).json({ error:'invalid role' });
   if(role.role_name === 'superadmin') return res.status(403).json({ error:'cannot create superadmin' });
+  
+  const existingUser = await User.findOne({ where: { email } });
+  if(existingUser) return res.status(400).json({ error:'user already exists' });
+  
   const password_hash = password ? await bcrypt.hash(password, 10) : null;
-  const user = await User.create({ email, username, first_name, last_name, password_hash, role_id: role.role_id });
+  const user = await User.create({ 
+    email, 
+    username: username || email, 
+    first_name, 
+    last_name, 
+    password_hash, 
+    role_id: role.role_id 
+  });
   res.json(user);
 });
 
@@ -32,11 +43,59 @@ router.put('/:userId/roles', authMiddleware, permit(['superadmin']), async (req,
   if(!user) return res.status(404).json({ error:'user not found' });
   const role = await Role.findOne({ where: { role_name } });
   if(!role) return res.status(400).json({ error:'invalid role' });
+  if(role.role_name === 'superadmin') return res.status(403).json({ error:'cannot promote to superadmin' });
   const pending = await require('../models').Complaint.count({ where: { assigned_to: user.user_id, status: 'open' } });
   if(pending>0) return res.status(400).json({ error:'user has pending tasks, clear them first', pending });
   user.role_id = role.role_id;
   await user.save();
   res.json({ ok:true, user });
+});
+
+router.post('/:userId/promote-admin', authMiddleware, permit(['superadmin']), async (req,res)=>{
+  const { userId } = req.params;
+  const user = await User.findByPk(userId);
+  if(!user) return res.status(404).json({ error:'user not found' });
+  
+  const adminRole = await Role.findOne({ where: { role_name: 'approver' } });
+  if(!adminRole) return res.status(400).json({ error:'admin role not found' });
+  
+  user.role_id = adminRole.role_id;
+  await user.save();
+  res.json({ ok:true, user, message: 'User promoted to admin successfully' });
+});
+
+router.post('/:userId/demote-admin', authMiddleware, permit(['superadmin']), async (req,res)=>{
+  const { userId } = req.params;
+  const user = await User.findByPk(userId);
+  if(!user) return res.status(404).json({ error:'user not found' });
+  
+  const currentRole = await Role.findByPk(user.role_id);
+  if(!currentRole || currentRole.role_name !== 'approver') {
+    return res.status(400).json({ error:'user is not an admin' });
+  }
+  
+  const pending = await require('../models').Complaint.count({ 
+    where: { assigned_to: user.user_id, status: 'open' } 
+  });
+  if(pending > 0) {
+    return res.status(400).json({ 
+      error:'admin has pending complaints, reassign them first', 
+      pending 
+    });
+  }
+  
+  const userRole = await Role.findOne({ where: { role_name: 'user' } });
+  if(!userRole) return res.status(400).json({ error:'user role not found' });
+  
+  user.role_id = userRole.role_id;
+  await user.save();
+  res.json({ ok:true, user, message: 'Admin demoted to regular user successfully' });
+});
+
+router.get('/me', authMiddleware, async (req,res)=>{
+  const user = await User.findByPk(req.user.user_id, { include: Role });
+  if(!user) return res.status(404).json({ error:'user not found' });
+  res.json(user);
 });
 
 router.get('/:userId/screen-config', authMiddleware, async (req,res)=>{

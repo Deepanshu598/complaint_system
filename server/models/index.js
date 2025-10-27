@@ -24,10 +24,11 @@ User.belongsTo(Role, { foreignKey: 'role_id' });
 Role.belongsToMany(Permission, { through: RolePermission, foreignKey: 'role_id', otherKey: 'permission_id' });
 Permission.belongsToMany(Role, { through: RolePermission, foreignKey: 'permission_id', otherKey: 'role_id' });
 
-User.hasMany(Complaint, { foreignKey: 'user_id' });
-Complaint.belongsTo(User, { foreignKey: 'user_id' });
+User.hasMany(Complaint, { foreignKey: 'user_id', as: 'createdComplaints' });
+Complaint.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
-User.hasMany(Complaint, { foreignKey: 'assigned_to', as: 'AssignedComplaints' });
+User.hasMany(Complaint, { foreignKey: 'assigned_to', as: 'assignedComplaints' });
+Complaint.belongsTo(User, { foreignKey: 'assigned_to', as: 'assignedUser' });
 
 Complaint.hasMany(ComplaintAction, { foreignKey: 'complaint_id' });
 

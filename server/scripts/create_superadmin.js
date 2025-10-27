@@ -1,35 +1,46 @@
-
-
 require('dotenv').config();
+const { sequelize, User, Role } = require('../models');
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const { sequelize, Role, User } = require('../models');
 
-async function main(){
-  await sequelize.authenticate();
-  const roles = ['superadmin','approver','reviewer','user'];
-  for(const r of roles){
-    await Role.findOrCreate({ where: { role_name: r } });
+async function createSuperAdmin() {
+  try {
+    await sequelize.authenticate();
+    console.log('Database connected successfully');
+
+    const [superadminRole, created] = await Role.findOrCreate({
+      where: { role_name: 'superadmin' },
+      defaults: { role_name: 'superadmin' }
+    });
+
+    const existingSuperAdmin = await User.findOne({
+      where: { email: 'superadmin@gmail.com' }
+    });
+
+    if (existingSuperAdmin) {
+      console.log('Superadmin already exists');
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash('superadmin@123', 10);
+    const superadmin = await User.create({
+      email: 'superadmin@gmail.com',
+      username: 'superadmin@gmail.com',
+      password_hash: passwordHash,
+      first_name: 'Super',
+      last_name: 'Admin',
+      role_id: superadminRole.role_id
+    });
+
+    console.log('Superadmin created successfully:', {
+      email: superadmin.email,
+      role: 'superadmin'
+    });
+
+  } catch (error) {
+    console.error('Error creating superadmin:', error);
+  } finally {
+    await sequelize.close();
   }
-  console.log('Roles ensured');
-
-  const email = process.env.SA_EMAIL || 'admin@example.com';
-  const password = process.env.SA_PASSWORD || 'adminpass';
-
-  let user = await User.findOne({ where: { email } });
-  if(!user){
-    const roleObj = await Role.findOne({ where: { role_name: 'superadmin' } });
-    const password_hash = await bcrypt.hash(password, 10);
-    user = await User.create({ email, username: email, first_name: 'Super', last_name: 'Admin', password_hash, role_id: roleObj.role_id });
-    console.log('Created superadmin:', email);
-  } else {
-    console.log('Superadmin already exists:', email);
-  }
-
-  const token = jwt.sign({ userId: user.user_id, roleId: user.role_id }, process.env.JWT_SECRET || 'dev', { expiresIn: '7d' });
-  console.log('\nUse this JWT for testing (set it in the client auth):\n');
-  console.log(token);
-  process.exit(0);
 }
 
-main().catch(err=>{ console.error(err); process.exit(1); });
+createSuperAdmin();
